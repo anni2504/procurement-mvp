@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ProcurementProvider, useProcurement } from './context/ProcurementContext'
 import Step1Request from './components/Step1Request'
 import Step2Approval from './components/Step2Approval'
@@ -102,6 +102,11 @@ function Layout() {
   const { state } = useProcurement()
   const current = state.currentStep
   const [selected, setSelected] = useState(1)
+
+  // Auto-advance sidebar to next step when workflow progresses
+  useEffect(() => {
+    setSelected(current)
+  }, [current])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
