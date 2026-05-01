@@ -1,36 +1,79 @@
 import { useEffect } from 'react'
 import { useProcurement } from '../context/ProcurementContext'
+import { useToast } from '../context/ToastContext'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
+import { Separator } from './ui/separator'
 
 export default function Step4PO() {
   const { state, generatePO, approvePO } = useProcurement()
-  const { purchaseOrder, request, selectedVendor } = state
+  const { showToast } = useToast()
+  const { purchaseOrder } = state
+  const isComplete = state.currentStep > 4
 
   useEffect(() => {
-    if (!purchaseOrder && request && selectedVendor) generatePO()
+    if (!purchaseOrder && state.request && state.selectedVendor) generatePO()
   }, [])
 
-  if (!purchaseOrder) return <p className="text-sm text-gray-400">Generating PO...</p>
+  const handleApprove = () => {
+    approvePO()
+    showToast(`PO ${purchaseOrder?.poNumber} sent to vendor`, 'success')
+  }
+
+  if (!purchaseOrder) {
+    return <div className="flex items-center justify-center py-12 animate-pulse-soft"><p className="text-sm text-slate-400">Generating PO...</p></div>
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-xs text-gray-500">Purchase Order</p>
-        <span className="bg-blue-100 text-blue-700 text-xs font-mono font-bold px-2 py-1 rounded">{purchaseOrder.poNumber}</span>
-      </div>
-      <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-        <div className="flex justify-between"><span className="text-gray-500">Item</span><span className="font-medium">{purchaseOrder.itemName}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Quantity Ordered</span><span className="font-medium">{purchaseOrder.quantity}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Unit Price</span><span className="font-medium">₹{purchaseOrder.unitPrice.toLocaleString()}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Vendor</span><span className="font-medium">{purchaseOrder.vendorName}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Vendor Email</span><span className="font-medium">{purchaseOrder.vendorEmail}</span></div>
-        <div className="border-t pt-2 flex justify-between">
-          <span className="font-medium text-gray-700">Total Amount</span>
-          <span className="font-bold text-blue-700 text-base">₹{purchaseOrder.totalAmount.toLocaleString()}</span>
+    <div className="space-y-4 stagger-children">
+      {isComplete ? (
+        <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><span className="text-lg">📄</span></div>
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">PO Issued & Locked</p>
+            <p className="text-xs text-emerald-600">Sent to {purchaseOrder.vendorName}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-700">
+          <strong>Review PO</strong> — Once approved, this document is locked.
+        </div>
+      )}
+      <div className="bg-slate-50 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Purchase Order</span>
+          <Badge className="rounded-full font-mono text-xs bg-indigo-100 text-indigo-700 border-indigo-200">{purchaseOrder.poNumber}</Badge>
+        </div>
+        <Separator />
+        <div className="grid grid-cols-2 gap-y-3 text-sm">
+          <span className="text-slate-400">Item</span><span className="text-right font-medium">{purchaseOrder.itemName}</span>
+          <span className="text-slate-400">Quantity</span><span className="text-right font-medium">{purchaseOrder.quantity} units</span>
+          <span className="text-slate-400">Unit Price</span><span className="text-right font-medium">₹{purchaseOrder.unitPrice.toLocaleString()}</span>
+          <span className="text-slate-400">Vendor</span><span className="text-right font-medium">{purchaseOrder.vendorName}</span>
+          <span className="text-slate-400">Email</span><span className="text-right font-medium text-slate-500">{purchaseOrder.vendorEmail}</span>
+        </div>
+        <Separator />
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-semibold text-slate-700">Total Amount</span>
+          <span className="text-lg font-bold text-indigo-600">₹{purchaseOrder.totalAmount.toLocaleString()}</span>
         </div>
       </div>
-      <button onClick={approvePO} className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-blue-700 transition-colors">
-        Approve & Send PO to Vendor →
-      </button>
+      {state.poAmendment && (
+        <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-amber-600 uppercase">PO Amendment</span>
+            <Badge variant="warning" className="rounded-full font-mono text-[10px]">{state.poAmendment.amendmentNumber}</Badge>
+          </div>
+          <p className="text-sm text-amber-800">Qty: <strong>{state.poAmendment.originalQuantity}</strong> → <strong>{state.poAmendment.newQuantity}</strong></p>
+          <p className="text-xs text-amber-600">Reason: {state.poAmendment.reason}</p>
+        </div>
+      )}
+      {isComplete && <p className="text-xs text-slate-400 text-center">🔒 Locked — corrections via PO Amendment only</p>}
+      {!isComplete && (
+        <Button onClick={handleApprove} className="w-full bg-indigo-600 hover:bg-indigo-700 h-11 font-semibold">
+          Approve & Send PO to Vendor →
+        </Button>
+      )}
     </div>
   )
 }

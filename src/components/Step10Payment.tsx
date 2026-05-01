@@ -1,31 +1,61 @@
 import { useProcurement } from '../context/ProcurementContext'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
+import { Separator } from './ui/separator'
 
 export default function Step10Payment() {
   const { state, resetAll } = useProcurement()
-  const { purchaseOrder, invoice } = state
+  const { purchaseOrder, invoice, completedAt } = state
   if (!purchaseOrder || !invoice) return null
 
+  const dateStr = completedAt
+    ? new Date(completedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+
   return (
-    <div className="space-y-4 text-center">
-      <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-        <div className="text-5xl mb-3">🎉</div>
-        <p className="text-xl font-bold text-green-700">Payment Processed!</p>
-        <p className="text-sm text-green-600 mt-1">Procurement workflow completed successfully</p>
+    <div className="space-y-5 stagger-children">
+      {/* Success Banner */}
+      <div className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-2xl p-8 text-center">
+        <div className="text-5xl mb-4">🎉</div>
+        <h3 className="text-2xl font-extrabold text-emerald-700">Payment Processed!</h3>
+        <p className="text-sm text-emerald-600 mt-2 font-medium">
+          Procurement workflow completed successfully
+        </p>
       </div>
-      <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm text-left">
-        <div className="flex justify-between"><span className="text-gray-500">PO Number</span><span className="font-mono font-bold">{purchaseOrder.poNumber}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Invoice</span><span className="font-mono">{invoice.invoiceNumber}</span></div>
-        <div className="flex justify-between"><span className="text-gray-500">Vendor</span><span>{purchaseOrder.vendorName}</span></div>
-        <div className="border-t pt-2 flex justify-between">
-          <span className="font-medium">Amount Paid</span>
-          <span className="font-bold text-green-700 text-lg">₹{invoice.billedAmount.toLocaleString()}</span>
+
+      {/* Transaction Summary */}
+      <div className="bg-slate-50 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Transaction Summary</span>
+          <Badge variant="success" className="rounded-full">PAID</Badge>
+        </div>
+        <Separator />
+        <div className="grid grid-cols-2 gap-y-3 text-sm">
+          <span className="text-slate-400">PO Number</span>
+          <span className="text-right font-mono font-bold">{purchaseOrder.poNumber}</span>
+          <span className="text-slate-400">Invoice</span>
+          <span className="text-right font-mono">{invoice.invoiceNumber}</span>
+          <span className="text-slate-400">Vendor</span>
+          <span className="text-right font-medium">{purchaseOrder.vendorName}</span>
+          <span className="text-slate-400">Item</span>
+          <span className="text-right font-medium">{purchaseOrder.itemName}</span>
+          <span className="text-slate-400">Quantity</span>
+          <span className="text-right font-medium">{invoice.billedQuantity} units</span>
+        </div>
+        <Separator />
+        <div className="flex justify-between items-center">
+          <span className="font-semibold text-slate-700">Amount Paid</span>
+          <span className="text-xl font-extrabold text-emerald-600">₹{invoice.billedAmount.toLocaleString()}</span>
         </div>
       </div>
-      <p className="text-xs text-gray-400">Transaction closed • {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-      <button onClick={resetAll}
-        className="w-full border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
+
+      <p className="text-xs text-slate-400 text-center font-medium">
+        Transaction closed • {dateStr}
+      </p>
+
+      <Button variant="outline" onClick={resetAll} className="w-full h-11 font-semibold">
         ↺ Start New Procurement
-      </button>
+      </Button>
     </div>
   )
 }
