@@ -9,7 +9,7 @@ export default function Step4PO() {
   const { state, generatePO, approvePO } = useProcurement()
   const { showToast } = useToast()
   const { purchaseOrder } = state
-  const isComplete = state.currentStep > 4
+  const isComplete = state.currentStep > 5
 
   useEffect(() => {
     if (!purchaseOrder && state.request && state.selectedVendor) generatePO()

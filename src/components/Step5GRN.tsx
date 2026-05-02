@@ -11,7 +11,7 @@ export default function Step5GRN() {
   const { state, submitGRN } = useProcurement()
   const { showToast } = useToast()
   const po = state.purchaseOrder
-  const isComplete = state.currentStep > 5
+  const isComplete = state.currentStep > 6
   const grn = state.grn
 
   const [form, setForm] = useState({ receivedQuantity: '', condition: 'Good', notes: '' })

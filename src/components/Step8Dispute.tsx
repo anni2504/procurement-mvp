@@ -36,17 +36,19 @@ export default function Step8Dispute() {
 
   const handleWarehouseFix = () => {
     resolveDispute({ ...grn, receivedQuantity: Number(newGRNQty) }, undefined)
-    showToast('GRN quantity corrected — re-running match', 'info')
+    showToast('GRN corrected — re-running match', 'info')
   }
 
   const handleProcurementFix = () => {
-    if (!amdReason.trim()) { showToast('Please provide a reason for the amendment', 'warning'); return }
+    if (!amdReason.trim()) { showToast('Provide a reason for the amendment', 'warning'); return }
     raisePOAmendment(Number(amdQty), amdReason.trim())
     showToast(`PO Amendment raised — new qty: ${amdQty}`, 'info')
   }
 
+  // Fixed: resolveDispute now uses setState callback so it reads latest poAmendment
   const handleRerunAfterAmendment = () => {
     resolveDispute(grn, invoice)
+    showToast('Re-running 3-way match with amended PO...', 'info')
   }
 
   return (
@@ -59,14 +61,14 @@ export default function Step8Dispute() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: 'PO Qty', value: effectiveQty, amended: !!poAmendment },
+            { label: 'PO Qty', value: effectiveQty, extra: poAmendment ? 'amended' : null },
             { label: 'GRN Qty', value: grn.receivedQuantity },
             { label: 'Invoice Qty', value: invoice.billedQuantity },
           ].map((item, i) => (
             <div key={i} className="bg-white/60 rounded-lg p-3 text-center">
               <p className="text-[10px] text-red-400 font-semibold uppercase">{item.label}</p>
               <p className="text-xl font-bold text-red-800 mt-1">{item.value}</p>
-              {'amended' in item && item.amended && <p className="text-[9px] text-amber-600 font-medium">amended</p>}
+              {item.extra && <p className="text-[9px] text-amber-600 font-medium">{item.extra}</p>}
             </div>
           ))}
         </div>
@@ -77,37 +79,27 @@ export default function Step8Dispute() {
         <p className="text-sm font-semibold text-slate-700 mb-3">Who is responsible for the error?</p>
         <div className="space-y-2">
           {PARTIES.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setResponsibleParty(p.value)}
+            <button key={p.value} onClick={() => setResponsibleParty(p.value)}
               className={`w-full text-left rounded-xl p-4 border transition-all duration-200 ${
-                responsibleParty === p.value
-                  ? 'border-indigo-300 bg-indigo-50/50 shadow-sm'
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
+                responsibleParty === p.value ? 'border-indigo-300 bg-indigo-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
+              }`}>
               <div className="flex items-center gap-3">
                 <span className="text-xl">{p.icon}</span>
                 <div>
                   <p className="text-sm font-semibold text-slate-800">{p.label}</p>
                   <p className="text-xs text-slate-400">{p.desc}</p>
                 </div>
-                {responsibleParty === p.value && (
-                  <Badge className="ml-auto rounded-full bg-indigo-100 text-indigo-700 border-indigo-200 text-[10px]">Selected</Badge>
-                )}
+                {responsibleParty === p.value && <Badge className="ml-auto rounded-full bg-indigo-100 text-indigo-700 border-indigo-200 text-[10px]">Selected</Badge>}
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Correction Form based on Responsible Party */}
+      {/* Vendor Correction */}
       {responsibleParty === 'vendor' && (
         <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <div className="flex items-center gap-2">
-            <span>🏢</span>
-            <p className="text-sm font-semibold text-slate-700">Vendor Correction — Update Invoice</p>
-          </div>
+          <p className="text-sm font-semibold text-slate-700">🏢 Vendor Correction — Update Invoice</p>
           <Separator />
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -125,12 +117,10 @@ export default function Step8Dispute() {
         </div>
       )}
 
+      {/* Warehouse Correction */}
       {responsibleParty === 'warehouse' && (
         <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <div className="flex items-center gap-2">
-            <span>📦</span>
-            <p className="text-sm font-semibold text-slate-700">Warehouse Correction — Update GRN</p>
-          </div>
+          <p className="text-sm font-semibold text-slate-700">📦 Warehouse Correction — Update GRN</p>
           <Separator />
           <div>
             <Label className="text-xs text-slate-500">Corrected Received Quantity</Label>
@@ -142,15 +132,13 @@ export default function Step8Dispute() {
         </div>
       )}
 
+      {/* Procurement — PO Amendment */}
       {responsibleParty === 'procurement' && (
         <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <div className="flex items-center gap-2">
-            <span>📋</span>
-            <p className="text-sm font-semibold text-slate-700">PO Amendment — Original PO remains locked</p>
-          </div>
+          <p className="text-sm font-semibold text-slate-700">📋 PO Amendment — Original PO remains locked</p>
           <Separator />
           <div className="bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
-            🔒 The original PO ({purchaseOrder.poNumber}, qty: {purchaseOrder.quantity}) cannot be edited. A separate amendment document will be created.
+            🔒 Original PO ({purchaseOrder.poNumber}, qty: {purchaseOrder.quantity}) cannot be edited. A separate amendment will be created.
           </div>
           <div>
             <Label className="text-xs text-slate-500">New PO Quantity</Label>
@@ -166,9 +154,9 @@ export default function Step8Dispute() {
               Raise PO Amendment
             </Button>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 animate-fade-in">
               <div className="bg-emerald-50/60 border border-emerald-100 rounded-lg p-3 text-xs text-emerald-700">
-                ✓ Amendment <strong>{poAmendment.amendmentNumber}</strong> raised — qty changed from {poAmendment.originalQuantity} to {poAmendment.newQuantity}
+                ✓ Amendment <strong>{poAmendment.amendmentNumber}</strong> raised — qty: {poAmendment.originalQuantity} → {poAmendment.newQuantity}
               </div>
               <Button onClick={handleRerunAfterAmendment} className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 font-semibold">
                 Re-run 3-Way Match with Amended PO →

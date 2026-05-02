@@ -75,7 +75,7 @@ export default function Step7Match() {
 
       {!allMatch && (
         <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-4 text-sm text-amber-700 font-medium">
-          ⚠ Routed to <strong>Dispute Resolution</strong> (Step 8) — select responsible party and correct the values
+          ⚠ Routed to <strong>Dispute Resolution</strong> — select responsible party and correct the values
         </div>
       )}
     </div>

@@ -8,7 +8,7 @@ export default function Step9Finance() {
   const { state, approvePayment, rejectPayment } = useProcurement()
   const { showToast } = useToast()
   const { purchaseOrder, invoice, financeApproved } = state
-  const isComplete = state.currentStep > 9
+  const isComplete = state.currentStep > 10
 
   if (!purchaseOrder || !invoice) return null
 

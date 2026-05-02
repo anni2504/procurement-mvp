@@ -13,23 +13,22 @@ export default function Step6Invoice() {
   const po = state.purchaseOrder
   const grn = state.grn
   const inv = state.invoice
-  const isComplete = state.currentStep > 6
+  const isComplete = state.currentStep > 7
 
-  const [form, setForm] = useState({ invoiceNumber: '', billedQuantity: '', billedAmount: '' })
+  const nextInvNum = `INV-${state.nextInvoiceNumber.toString().padStart(4, '0')}`
+  const [form, setForm] = useState({ billedQuantity: '', billedAmount: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = () => {
     const e: Record<string, string> = {}
-    if (!form.invoiceNumber.trim()) e.invoiceNumber = 'Required'
     if (!form.billedQuantity || Number(form.billedQuantity) <= 0) e.billedQuantity = 'Required'
     if (!form.billedAmount || Number(form.billedAmount) <= 0) e.billedAmount = 'Required'
     if (Object.keys(e).length > 0) { setErrors(e); return }
     submitInvoice({
-      invoiceNumber: form.invoiceNumber.trim(),
       billedQuantity: Number(form.billedQuantity),
       billedAmount: Number(form.billedAmount),
     })
-    showToast('Invoice submitted — 3-Way Match will run next', 'info')
+    showToast(`Invoice ${nextInvNum} submitted — 3-Way Match will run next`, 'info')
   }
 
   // ─── Completed View ───
@@ -44,18 +43,16 @@ export default function Step6Invoice() {
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-50 rounded-xl p-4 text-center">
-            <p className="text-[10px] text-slate-400 font-semibold uppercase">PO Qty</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{po.quantity}</p>
-          </div>
-          <div className="bg-slate-50 rounded-xl p-4 text-center">
-            <p className="text-[10px] text-slate-400 font-semibold uppercase">GRN Qty</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{grn.receivedQuantity}</p>
-          </div>
-          <div className="bg-slate-50 rounded-xl p-4 text-center">
-            <p className="text-[10px] text-slate-400 font-semibold uppercase">Invoice Qty</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{inv.billedQuantity}</p>
-          </div>
+          {[
+            { label: 'PO Qty', value: po.quantity },
+            { label: 'GRN Qty', value: grn.receivedQuantity },
+            { label: 'Invoice Qty', value: inv.billedQuantity },
+          ].map((item, i) => (
+            <div key={i} className="bg-slate-50 rounded-xl p-4 text-center">
+              <p className="text-[10px] text-slate-400 font-semibold uppercase">{item.label}</p>
+              <p className="text-xl font-bold text-slate-800 mt-1">{item.value}</p>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -78,9 +75,8 @@ export default function Step6Invoice() {
       )}
       <div>
         <Label className="text-sm font-medium text-slate-700">Invoice Number</Label>
-        <Input placeholder="e.g. INV-2024-001" value={form.invoiceNumber}
-          onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))} className="mt-1.5" />
-        {errors.invoiceNumber && <p className="text-red-500 text-xs mt-1">{errors.invoiceNumber}</p>}
+        <Input value={nextInvNum} readOnly disabled className="mt-1.5 bg-slate-50 font-mono font-bold" />
+        <p className="text-[10px] text-slate-400 mt-1">Auto-generated — incremental</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
