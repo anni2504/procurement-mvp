@@ -1,4 +1,4 @@
-import { useProcurement } from '../context/ProcurementContext'
+import { useProcurement, getRequest, getStepStatus } from '../context/ProcurementContext'
 import { useToast } from '../context/ToastContext'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -7,23 +7,47 @@ import { Separator } from './ui/separator'
 export default function Step2Approval() {
   const { state, approveRequest, rejectRequest } = useProcurement()
   const { showToast } = useToast()
-  const r = state.request
-  const isComplete = state.currentStep > 2
+  const r = getRequest(state.activeWorkflow)
+  const isComplete = getStepStatus(state.activeWorkflow, 2) === 'completed'
 
   if (!r) return null
 
-  const handleApprove = () => {
-    approveRequest()
-    showToast('Request approved — forwarded to Procurement for RFP', 'success')
+  const handleApprove = async () => {
+    try {
+      await approveRequest()
+      showToast('Request approved — forwarded to Procurement for RFP', 'success')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
-  const handleReject = () => {
-    rejectRequest()
-    showToast('Request rejected — returned to requester', 'warning')
+  const handleReject = async () => {
+    try {
+      await rejectRequest()
+      showToast('Request rejected — returned to requester', 'warning')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
   // ─── Completed View ───
   if (isComplete) {
+    const approved = state.activeWorkflow?.steps.find(s => s.stepNumber === 2)?.data.approved
+    
+    if (approved === false) {
+      return (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+            <span className="text-lg">✕</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-red-800">Request Rejected</p>
+            <p className="text-xs text-red-600">Returned to requester</p>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="space-y-4 stagger-children">
         <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4 flex items-center gap-3">

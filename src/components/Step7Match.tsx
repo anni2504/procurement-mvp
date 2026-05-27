@@ -1,83 +1,120 @@
-import { useEffect } from 'react'
-import { useProcurement } from '../context/ProcurementContext'
+import { useProcurement, getPurchaseOrder, getGRN, getInvoice, getPOAmendment, getStepStatus, getMatchStatus } from '../context/ProcurementContext'
 import { useToast } from '../context/ToastContext'
+import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Separator } from './ui/separator'
 
 export default function Step7Match() {
   const { state, runMatch } = useProcurement()
   const { showToast } = useToast()
-  const { purchaseOrder, grn, invoice, matchStatus, poAmendment } = state
+  
+  const isComplete = getStepStatus(state.activeWorkflow, 9) === 'completed'
+  const matchStatus = getMatchStatus(state.activeWorkflow)
+  const po = getPurchaseOrder(state.activeWorkflow)
+  const grn = getGRN(state.activeWorkflow)
+  const inv = getInvoice(state.activeWorkflow)
+  const amendment = getPOAmendment(state.activeWorkflow)
 
-  useEffect(() => {
-    if (purchaseOrder && grn && invoice && !matchStatus) {
-      runMatch()
+  const handleRun = async () => {
+    try {
+      await runMatch()
+      showToast('3-Way Match completed', 'info')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
     }
-  }, [])
+  }
 
-  useEffect(() => {
-    if (matchStatus === 'matched') {
-      showToast('3-Way Match PASSED — invoice approved for finance review', 'success')
-    } else if (matchStatus === 'mismatched') {
-      showToast('3-Way Match FAILED — quantities mismatch, dispute required', 'error')
-    }
-  }, [matchStatus])
+  if (!po || !grn || !inv) return null
 
-  if (!purchaseOrder || !grn || !invoice) return null
+  const effectivePOQty = amendment ? amendment.newQuantity : po.quantity
 
-  const effectiveQty = poAmendment ? poAmendment.newQuantity : purchaseOrder.quantity
-  const rows = [
-    { label: 'PO Quantity', value: effectiveQty, source: poAmendment ? `${purchaseOrder.poNumber} (amended)` : purchaseOrder.poNumber },
-    { label: 'GRN Received', value: grn.receivedQuantity, source: 'Delivery Challan' },
-    { label: 'Invoice Billed', value: invoice.billedQuantity, source: invoice.invoiceNumber },
-  ]
-  const allMatch = rows.every(r => r.value === effectiveQty)
-
-  return (
-    <div className="space-y-4 stagger-children">
-      {/* Result Banner */}
-      <div className={`rounded-xl p-6 text-center ${allMatch ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
-        <p className={`text-3xl font-extrabold ${allMatch ? 'text-emerald-700' : 'text-red-700'}`}>
-          {allMatch ? '✓ MATCHED' : '✗ MISMATCH'}
-        </p>
-        <p className={`text-sm mt-2 font-medium ${allMatch ? 'text-emerald-600' : 'text-red-600'}`}>
-          {allMatch ? 'All quantities match — invoice approved for payment' : 'Quantities do not match — dispute resolution required'}
-        </p>
-      </div>
-
-      {/* Comparison Table */}
-      <div className="space-y-2">
-        {rows.map((r, i) => (
-          <div key={i} className={`flex justify-between items-center rounded-xl p-4 text-sm ${
-            r.value === effectiveQty ? 'bg-emerald-50/60 border border-emerald-100' : 'bg-red-50/60 border border-red-100'
-          }`}>
-            <div>
-              <span className="font-medium text-slate-700">{r.label}</span>
-              <p className="text-[10px] text-slate-400 mt-0.5">Source: {r.source}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-lg font-bold ${r.value === effectiveQty ? 'text-emerald-700' : 'text-red-700'}`}>
-                {r.value}
-              </span>
-              <span className={`text-sm ${r.value === effectiveQty ? 'text-emerald-500' : 'text-red-500'}`}>
-                {r.value === effectiveQty ? '✓' : '✗'}
-              </span>
-            </div>
+  const renderComparison = () => (
+    <div className="grid grid-cols-3 gap-4">
+      {/* PO Column */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative">
+        {amendment && (
+          <div className="absolute -top-3 -right-3">
+            <Badge variant="warning" className="shadow-sm">Amended</Badge>
           </div>
-        ))}
+        )}
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">PO Quantity</p>
+        <p className="text-2xl font-black text-slate-800">{effectivePOQty}</p>
+        <p className="text-xs text-slate-500 mt-1">{amendment ? `PO Amended` : po.poNumber}</p>
+      </div>
+      
+      {/* GRN Column */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Received Qty</p>
+        <p className={`text-2xl font-black ${grn.receivedQuantity === effectivePOQty ? 'text-slate-800' : 'text-amber-600'}`}>
+          {grn.receivedQuantity}
+        </p>
+        <p className="text-xs text-slate-500 mt-1">Goods Receipt</p>
       </div>
 
-      {/* Financial Summary */}
-      <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
-        <div className="flex justify-between"><span className="text-slate-400">PO Amount</span><span className="font-medium">₹{purchaseOrder.totalAmount.toLocaleString()}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">Invoice Amount</span><span className="font-medium">₹{invoice.billedAmount.toLocaleString()}</span></div>
+      {/* Invoice Column */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Billed Qty</p>
+        <p className={`text-2xl font-black ${inv.billedQuantity === effectivePOQty && inv.billedQuantity === grn.receivedQuantity ? 'text-slate-800' : 'text-amber-600'}`}>
+          {inv.billedQuantity}
+        </p>
+        <p className="text-xs text-slate-500 mt-1">{inv.invoiceNumber}</p>
       </div>
+    </div>
+  )
 
-      {!allMatch && (
-        <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-4 text-sm text-amber-700 font-medium">
-          ⚠ Routed to <strong>Dispute Resolution</strong> — select responsible party and correct the values
+  // ─── Completed View ───
+  if (isComplete) {
+    if (matchStatus === 'matched') {
+      return (
+        <div className="space-y-6 stagger-children">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center shadow-sm">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">✓</span>
+            </div>
+            <h3 className="text-lg font-bold text-emerald-900">Match Successful</h3>
+            <p className="text-sm text-emerald-700 mt-1">PO, Goods Receipt, and Invoice quantities align perfectly.</p>
+          </div>
+          {renderComparison()}
         </div>
-      )}
+      )
+    }
+    
+    if (matchStatus === 'mismatched') {
+      return (
+        <div className="space-y-6 stagger-children">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center shadow-sm">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">✕</span>
+            </div>
+            <h3 className="text-lg font-bold text-red-900">Discrepancy Detected</h3>
+            <p className="text-sm text-red-700 mt-1">Quantities do not match. Escalated to Discrepancy Resolution.</p>
+          </div>
+          {renderComparison()}
+        </div>
+      )
+    }
+  }
+
+  // ─── Active View ───
+  return (
+    <div className="space-y-6 stagger-children">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center space-y-4">
+        <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center mx-auto">
+          <span className="text-xl">⚖️</span>
+        </div>
+        <div>
+          <p className="font-semibold text-slate-800">Ready for 3-Way Match</p>
+          <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1">
+            System will automatically compare the Purchase Order, Goods Receipt Note, and Vendor Invoice for alignment.
+          </p>
+        </div>
+        
+        <Button onClick={handleRun} className="bg-indigo-600 hover:bg-indigo-700 font-semibold px-8 mt-2 shadow-md shadow-indigo-200">
+          Run Automated Match
+        </Button>
+      </div>
+      
+      {renderComparison()}
     </div>
   )
 }

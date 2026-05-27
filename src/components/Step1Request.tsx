@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useProcurement } from '../context/ProcurementContext'
+import { useProcurement, getRequest, getStepStatus } from '../context/ProcurementContext'
 import { useToast } from '../context/ToastContext'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -11,8 +11,9 @@ import { Separator } from './ui/separator'
 export default function Step1Request() {
   const { state, submitRequest } = useProcurement()
   const { showToast } = useToast()
-  const isComplete = state.currentStep > 1
-  const r = state.request
+  
+  const isComplete = getStepStatus(state.activeWorkflow, 1) === 'completed'
+  const r = getRequest(state.activeWorkflow)
 
   const [form, setForm] = useState({
     itemName: '',
@@ -33,17 +34,21 @@ export default function Step1Request() {
     return e
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate()
     if (Object.keys(e).length > 0) { setErrors(e); return }
-    submitRequest({
-      itemName: form.itemName.trim(),
-      quantity: Number(form.quantity),
-      unitPrice: Number(form.unitPrice),
-      category: form.category,
-      justification: form.justification.trim(),
-    })
-    showToast('Procurement request submitted — pending manager approval', 'success')
+    try {
+      await submitRequest({
+        itemName: form.itemName.trim(),
+        quantity: Number(form.quantity),
+        unitPrice: Number(form.unitPrice),
+        category: form.category,
+        justification: form.justification.trim(),
+      })
+      showToast('Procurement request submitted — pending manager approval', 'success')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
   // ─── Completed View ───

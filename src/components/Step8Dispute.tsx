@@ -1,168 +1,200 @@
 import { useState } from 'react'
-import { useProcurement, ResponsibleParty } from '../context/ProcurementContext'
+import { useProcurement, getPurchaseOrder, getGRN, getInvoice, getPOAmendment, getResponsibleParty, getStepStatus, getStepData } from '../context/ProcurementContext'
 import { useToast } from '../context/ToastContext'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Badge } from './ui/badge'
 import { Separator } from './ui/separator'
-import { Textarea } from './ui/textarea'
-
-const PARTIES = [
-  { value: 'vendor' as const, label: 'Vendor', desc: 'Wrong invoice issued — vendor corrects and resubmits', icon: '🏢' },
-  { value: 'procurement' as const, label: 'Procurement', desc: 'PO had incorrect qty — raise PO Amendment', icon: '📋' },
-  { value: 'warehouse' as const, label: 'Warehouse', desc: 'GRN count error — update received quantity', icon: '📦' },
-]
+import { Input } from './ui/input'
 
 export default function Step8Dispute() {
   const { state, setResponsibleParty, resolveDispute, raisePOAmendment } = useProcurement()
   const { showToast } = useToast()
-  const { purchaseOrder, grn, invoice, responsibleParty, poAmendment } = state
+  
+  const isComplete = getStepStatus(state.activeWorkflow, 10) === 'completed'
+  const step10Data = getStepData(state.activeWorkflow, 10)
+  const isSkipped = step10Data.skipped === true
+  
+  const party = getResponsibleParty(state.activeWorkflow)
+  const po = getPurchaseOrder(state.activeWorkflow)
+  const grn = getGRN(state.activeWorkflow)
+  const inv = getInvoice(state.activeWorkflow)
+  const amendment = getPOAmendment(state.activeWorkflow)
 
-  const [newGRNQty, setNewGRNQty] = useState(String(grn?.receivedQuantity || ''))
-  const [newInvQty, setNewInvQty] = useState(String(invoice?.billedQuantity || ''))
-  const [newInvAmt, setNewInvAmt] = useState(String(invoice?.billedAmount || ''))
-  const [amdQty, setAmdQty] = useState(String(grn?.receivedQuantity || ''))
-  const [amdReason, setAmdReason] = useState('')
+  const [correctGRN, setCorrectGRN] = useState(false)
+  const [newGRNQty, setNewGRNQty] = useState(grn ? String(grn.receivedQuantity) : '')
+  const [correctInv, setCorrectInv] = useState(false)
+  const [newInvQty, setNewInvQty] = useState(inv ? String(inv.billedQuantity) : '')
+  const [newPOQty, setNewPOQty] = useState(po ? String(po.quantity) : '')
+  const [amendReason, setAmendReason] = useState('')
 
-  if (!purchaseOrder || !grn || !invoice) return null
+  if (!po || !grn || !inv) return null
 
-  const effectiveQty = poAmendment ? poAmendment.newQuantity : purchaseOrder.quantity
+  const effPOQty = amendment ? amendment.newQuantity : po.quantity
 
-  const handleVendorFix = () => {
-    resolveDispute(undefined, { ...invoice, billedQuantity: Number(newInvQty), billedAmount: Number(newInvAmt) })
-    showToast('Corrected invoice resubmitted — re-running match', 'info')
+  const handleSetParty = async (p: any) => {
+    try {
+      await setResponsibleParty(p)
+      showToast(`Assigned responsibility to ${p}`, 'info')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
-  const handleWarehouseFix = () => {
-    resolveDispute({ ...grn, receivedQuantity: Number(newGRNQty) }, undefined)
-    showToast('GRN corrected — re-running match', 'info')
+  const handleResolve = async () => {
+    try {
+      let updatedGRN = undefined
+      let updatedInv = undefined
+      
+      if (correctGRN) {
+        updatedGRN = { ...grn, receivedQuantity: Number(newGRNQty) }
+      }
+      if (correctInv) {
+        updatedInv = { ...inv, billedQuantity: Number(newInvQty) }
+      }
+      
+      await resolveDispute(updatedGRN, updatedInv)
+      showToast('Updates saved. System re-running 3-way match...', 'info')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
-  const handleProcurementFix = () => {
-    if (!amdReason.trim()) { showToast('Provide a reason for the amendment', 'warning'); return }
-    raisePOAmendment(Number(amdQty), amdReason.trim())
-    showToast(`PO Amendment raised — new qty: ${amdQty}`, 'info')
+  const handleAmendPO = async () => {
+    if (!amendReason.trim() || !newPOQty) return
+    try {
+      await raisePOAmendment(Number(newPOQty), amendReason.trim())
+      showToast('PO Amendment raised. Awaiting re-match.', 'success')
+      setAmendReason('')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
-  // Fixed: resolveDispute now uses setState callback so it reads latest poAmendment
-  const handleRerunAfterAmendment = () => {
-    resolveDispute(grn, invoice)
-    showToast('Re-running 3-way match with amended PO...', 'info')
+  // ─── Skipped View (Match Successful initially) ───
+  if (isSkipped) {
+    return (
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-500">
+        <span className="text-2xl mb-2 block">⏭️</span>
+        <p className="font-semibold text-slate-700">Step Skipped</p>
+        <p className="text-sm mt-1">3-way match was successful. No disputes to resolve.</p>
+      </div>
+    )
   }
 
+  // ─── Completed View (Dispute Resolved) ───
+  if (isComplete) {
+    return (
+      <div className="space-y-4 stagger-children">
+        <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><span className="text-lg">✓</span></div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">Dispute Resolved</p>
+              <p className="text-xs text-emerald-600">3-way match is now successful.</p>
+            </div>
+          </div>
+        </div>
+        
+        {amendment && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-bold text-slate-400 uppercase mb-3">PO Amendment Applied</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <span className="text-slate-500">Original Qty:</span><span className="font-medium text-slate-800 text-right">{amendment.originalQuantity}</span>
+              <span className="text-slate-500">New Qty:</span><span className="font-bold text-indigo-700 text-right">{amendment.newQuantity}</span>
+              <span className="text-slate-500">Reason:</span><span className="text-slate-800 text-right">{amendment.reason}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─── Active View ───
   return (
-    <div className="space-y-4 stagger-children">
-      {/* Mismatch Summary */}
-      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-lg">⚠️</span>
-          <strong className="text-red-800 text-sm">Mismatch Detected</strong>
+    <div className="space-y-6 stagger-children">
+      <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+        <div className="flex justify-between items-center mb-3">
+          <p className="text-sm font-bold text-red-800 uppercase tracking-widest">Discrepancy Details</p>
+          <Badge variant="destructive">Action Required</Badge>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: 'PO Qty', value: effectiveQty, extra: poAmendment ? 'amended' : null },
-            { label: 'GRN Qty', value: grn.receivedQuantity },
-            { label: 'Invoice Qty', value: invoice.billedQuantity },
-          ].map((item, i) => (
-            <div key={i} className="bg-white/60 rounded-lg p-3 text-center">
-              <p className="text-[10px] text-red-400 font-semibold uppercase">{item.label}</p>
-              <p className="text-xl font-bold text-red-800 mt-1">{item.value}</p>
-              {item.extra && <p className="text-[9px] text-amber-600 font-medium">{item.extra}</p>}
-            </div>
-          ))}
+        <div className="grid grid-cols-3 gap-2 text-sm text-center">
+          <div className="bg-white rounded-lg p-2 border border-red-100 shadow-sm">
+            <p className="text-xs text-slate-400 mb-1">PO {amendment ? '(Amended)' : ''}</p>
+            <p className="font-bold">{effPOQty}</p>
+          </div>
+          <div className="bg-white rounded-lg p-2 border border-red-100 shadow-sm">
+            <p className="text-xs text-slate-400 mb-1">GRN</p>
+            <p className="font-bold">{grn.receivedQuantity}</p>
+          </div>
+          <div className="bg-white rounded-lg p-2 border border-red-100 shadow-sm">
+            <p className="text-xs text-slate-400 mb-1">Invoice</p>
+            <p className="font-bold">{inv.billedQuantity}</p>
+          </div>
         </div>
       </div>
 
-      {/* Responsible Party Selection */}
-      <div>
-        <p className="text-sm font-semibold text-slate-700 mb-3">Who is responsible for the error?</p>
-        <div className="space-y-2">
-          {PARTIES.map((p) => (
-            <button key={p.value} onClick={() => setResponsibleParty(p.value)}
-              className={`w-full text-left rounded-xl p-4 border transition-all duration-200 ${
-                responsibleParty === p.value ? 'border-indigo-300 bg-indigo-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
-              }`}>
-              <div className="flex items-center gap-3">
-                <span className="text-xl">{p.icon}</span>
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{p.label}</p>
-                  <p className="text-xs text-slate-400">{p.desc}</p>
-                </div>
-                {responsibleParty === p.value && <Badge className="ml-auto rounded-full bg-indigo-100 text-indigo-700 border-indigo-200 text-[10px]">Selected</Badge>}
+      {!party ? (
+        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white shadow-sm animate-fade-in">
+          <p className="font-semibold text-slate-800 text-sm">Assign Responsibility</p>
+          <p className="text-xs text-slate-500">Who needs to resolve this mismatch?</p>
+          <div className="grid grid-cols-3 gap-3">
+            <Button variant="outline" onClick={() => handleSetParty('vendor')} className="text-xs h-auto py-3 flex-col gap-1 hover:border-indigo-300 hover:bg-indigo-50">
+              <span className="text-lg mb-1">🏢</span> Vendor
+            </Button>
+            <Button variant="outline" onClick={() => handleSetParty('warehouse')} className="text-xs h-auto py-3 flex-col gap-1 hover:border-indigo-300 hover:bg-indigo-50">
+              <span className="text-lg mb-1">📦</span> Warehouse
+            </Button>
+            <Button variant="outline" onClick={() => handleSetParty('procurement')} className="text-xs h-auto py-3 flex-col gap-1 hover:border-indigo-300 hover:bg-indigo-50">
+              <span className="text-lg mb-1">👔</span> Procurement
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="border border-slate-200 rounded-xl p-5 space-y-5 bg-white shadow-sm animate-fade-in">
+          <div className="flex justify-between items-center">
+            <p className="font-semibold text-slate-800 text-sm">Resolution Actions</p>
+            <Badge className="bg-indigo-100 text-indigo-700">Assigned to: <span className="capitalize ml-1">{party}</span></Badge>
+          </div>
+          <Separator />
+          
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <input type="checkbox" id="correctGRN" checked={correctGRN} onChange={(e) => setCorrectGRN(e.target.checked)} className="mt-1" />
+              <div className="flex-1">
+                <Label htmlFor="correctGRN" className="text-sm font-medium">Correct GRN Quantity</Label>
+                <p className="text-xs text-slate-500 mb-2">Warehouse recounted and found a different quantity.</p>
+                {correctGRN && <Input type="number" value={newGRNQty} onChange={e => setNewGRNQty(e.target.value)} placeholder="New Qty" className="h-8 text-sm max-w-[120px]" />}
               </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Vendor Correction */}
-      {responsibleParty === 'vendor' && (
-        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <p className="text-sm font-semibold text-slate-700">🏢 Vendor Correction — Update Invoice</p>
-          <Separator />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-slate-500">Corrected Invoice Qty</Label>
-              <Input type="number" value={newInvQty} onChange={e => setNewInvQty(e.target.value)} className="mt-1" />
             </div>
-            <div>
-              <Label className="text-xs text-slate-500">Corrected Amount (₹)</Label>
-              <Input type="number" value={newInvAmt} onChange={e => setNewInvAmt(e.target.value)} className="mt-1" />
+            
+            <div className="flex items-start gap-3">
+              <input type="checkbox" id="correctInv" checked={correctInv} onChange={(e) => setCorrectInv(e.target.checked)} className="mt-1" />
+              <div className="flex-1">
+                <Label htmlFor="correctInv" className="text-sm font-medium">Correct Invoice Quantity</Label>
+                <p className="text-xs text-slate-500 mb-2">Vendor sent a revised invoice.</p>
+                {correctInv && <Input type="number" value={newInvQty} onChange={e => setNewInvQty(e.target.value)} placeholder="New Qty" className="h-8 text-sm max-w-[120px]" />}
+              </div>
             </div>
           </div>
-          <Button onClick={handleVendorFix} className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 font-semibold">
-            Resubmit Corrected Invoice & Re-run Match →
+          
+          <Button onClick={handleResolve} disabled={!correctGRN && !correctInv} className="w-full bg-indigo-600 hover:bg-indigo-700 font-semibold shadow-md">
+            Save Corrections & Re-Match
           </Button>
-        </div>
-      )}
 
-      {/* Warehouse Correction */}
-      {responsibleParty === 'warehouse' && (
-        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <p className="text-sm font-semibold text-slate-700">📦 Warehouse Correction — Update GRN</p>
           <Separator />
-          <div>
-            <Label className="text-xs text-slate-500">Corrected Received Quantity</Label>
-            <Input type="number" value={newGRNQty} onChange={e => setNewGRNQty(e.target.value)} className="mt-1" />
-          </div>
-          <Button onClick={handleWarehouseFix} className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 font-semibold">
-            Update GRN & Re-run Match →
-          </Button>
-        </div>
-      )}
 
-      {/* Procurement — PO Amendment */}
-      {responsibleParty === 'procurement' && (
-        <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white animate-fade-in">
-          <p className="text-sm font-semibold text-slate-700">📋 PO Amendment — Original PO remains locked</p>
-          <Separator />
-          <div className="bg-amber-50/60 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
-            🔒 Original PO ({purchaseOrder.poNumber}, qty: {purchaseOrder.quantity}) cannot be edited. A separate amendment will be created.
-          </div>
-          <div>
-            <Label className="text-xs text-slate-500">New PO Quantity</Label>
-            <Input type="number" value={amdQty} onChange={e => setAmdQty(e.target.value)} className="mt-1" />
-          </div>
-          <div>
-            <Label className="text-xs text-slate-500">Reason for Amendment</Label>
-            <Textarea rows={2} placeholder="Why is the PO quantity being changed?"
-              value={amdReason} onChange={e => setAmdReason(e.target.value)} className="mt-1" />
-          </div>
-          {!poAmendment ? (
-            <Button onClick={handleProcurementFix} className="w-full bg-amber-600 hover:bg-amber-700 h-10 font-semibold">
+          <div className="pt-2">
+            <Label className="text-sm font-medium text-amber-800 mb-1 block">Or: Amend Purchase Order</Label>
+            <p className="text-xs text-slate-500 mb-3">If the mismatch is accepted (e.g. partial delivery accepted), raise a PO Amendment.</p>
+            <div className="flex gap-2">
+              <Input type="number" placeholder="New PO Qty" value={newPOQty} onChange={e => setNewPOQty(e.target.value)} className="w-1/3" />
+              <Input placeholder="Reason for amendment..." value={amendReason} onChange={e => setAmendReason(e.target.value)} className="flex-1" />
+            </div>
+            <Button onClick={handleAmendPO} variant="outline" className="w-full mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 font-semibold">
               Raise PO Amendment
             </Button>
-          ) : (
-            <div className="space-y-3 animate-fade-in">
-              <div className="bg-emerald-50/60 border border-emerald-100 rounded-lg p-3 text-xs text-emerald-700">
-                ✓ Amendment <strong>{poAmendment.amendmentNumber}</strong> raised — qty: {poAmendment.originalQuantity} → {poAmendment.newQuantity}
-              </div>
-              <Button onClick={handleRerunAfterAmendment} className="w-full bg-indigo-600 hover:bg-indigo-700 h-10 font-semibold">
-                Re-run 3-Way Match with Amended PO →
-              </Button>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>

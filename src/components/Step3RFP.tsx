@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useProcurement } from '../context/ProcurementContext'
+import { useProcurement, getRequest, getStepStatus, getStepData } from '../context/ProcurementContext'
 import { useToast } from '../context/ToastContext'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -8,15 +8,23 @@ import { Separator } from './ui/separator'
 export default function Step3RFP() {
   const { state, selectVendor } = useProcurement()
   const { showToast } = useToast()
-  const isComplete = state.currentStep > 4
-  const selected = state.selectedVendor
-  const vendors = state.allVendors
+  
+  const isComplete = getStepStatus(state.activeWorkflow, 4) === 'completed'
+  const step3Data = getStepData(state.activeWorkflow, 3)
+  const selected = step3Data.selectedVendor
+  const vendors = step3Data.vendors || []
+  const r = getRequest(state.activeWorkflow)
+  
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (selectedIdx === null) return
-    selectVendor(vendors[selectedIdx])
-    showToast(`"${vendors[selectedIdx].name}" selected — generating Purchase Order`, 'success')
+    try {
+      await selectVendor(vendors[selectedIdx].name, vendors[selectedIdx].email, vendors[selectedIdx].quote)
+      showToast(`"${vendors[selectedIdx].name}" selected — generating Purchase Order`, 'success')
+    } catch (err) {
+      showToast((err as Error).message, 'error')
+    }
   }
 
   // ─── Completed View ───
@@ -31,7 +39,7 @@ export default function Step3RFP() {
           </div>
         </div>
         <div className="space-y-2">
-          {vendors.map((v, i) => {
+          {vendors.map((v: any, i: number) => {
             const isSel = v.name === selected.name && v.email === selected.email
             return (
               <div key={i} className={`rounded-xl p-4 flex justify-between items-center text-sm border ${isSel ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-100 bg-slate-50'}`}>
@@ -59,7 +67,7 @@ export default function Step3RFP() {
         <div className="space-y-3">
           <p className="text-sm font-semibold text-slate-700">{vendors.length} Quote{vendors.length !== 1 ? 's' : ''} Received</p>
           <Separator />
-          {vendors.map((v, i) => (
+          {vendors.map((v: any, i: number) => (
             <div key={i} onClick={() => setSelectedIdx(i)}
               className={`border rounded-xl p-4 cursor-pointer flex justify-between items-center text-sm transition-all duration-200 ${
                 selectedIdx === i ? 'border-indigo-300 bg-indigo-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
@@ -70,7 +78,7 @@ export default function Step3RFP() {
               </div>
               <div className="text-right">
                 <p className="font-bold text-indigo-700">₹{v.quote.toLocaleString()}/unit</p>
-                {state.request && <p className="text-[10px] text-slate-400 mt-0.5">Total: ₹{(v.quote * state.request.quantity).toLocaleString()}</p>}
+                {r && <p className="text-[10px] text-slate-400 mt-0.5">Total: ₹{(v.quote * r.quantity).toLocaleString()}</p>}
                 {selectedIdx === i && <p className="text-emerald-500 text-xs font-medium mt-0.5">✓ Selected</p>}
               </div>
             </div>
