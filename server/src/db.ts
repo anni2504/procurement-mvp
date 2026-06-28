@@ -6,6 +6,8 @@ dotenv.config()
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/accounts_payable'
 
+mongoose.set('bufferCommands', false)
+
 let isConnected = false
 
 export async function connectDB() {
@@ -18,6 +20,11 @@ export async function connectDB() {
     console.log('✅ Connected to MongoDB')
   } catch (err) {
     console.error('❌ MongoDB connection error with primary URI:', (err as Error).message)
+
+    if (process.env.VERCEL === '1') {
+      console.log('⚠️ Running in serverless Vercel environment. Skipping local and In-Memory MongoDB fallbacks.')
+      return
+    }
 
     console.log('🔄 Trying local MongoDB fallback...')
     try {
