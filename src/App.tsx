@@ -119,9 +119,66 @@ function StepContent({ stepId }: { stepId: number }) {
 }
 
 function Layout() {
-  const { state } = useProcurement()
+  const { state, currentUser } = useProcurement()
   const [selected, setSelected] = useState<string | number>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // Enforce tab access control and auto-reset selected tab when switching roles
+  useEffect(() => {
+    if (!currentUser) return
+    if (selected === 'dashboard' || selected === 'reports' || selected === 'settings') return
+
+    if (selected === 'vendors' && currentUser.role !== 'procurement' && currentUser.role !== 'admin') {
+      setSelected('dashboard')
+      return
+    }
+
+    if (typeof selected === 'number') {
+      const STEP_ROLES: Record<number, string[]> = {
+        1: ['requester'],
+        2: ['manager'],
+        3: ['procurement'],
+        4: ['procurement'],
+        5: ['warehouse'],
+        6: ['vendor'],
+        7: ['procurement', 'finance'],
+        8: ['procurement', 'warehouse', 'vendor'],
+        9: ['finance'],
+        10: ['finance'],
+      }
+
+      const allowedRoles = STEP_ROLES[selected]
+      const isAllowed = currentUser.role === 'admin' || (allowedRoles && allowedRoles.includes(currentUser.role))
+      if (!isAllowed) {
+        setSelected('dashboard')
+      }
+    }
+  }, [currentUser?.role, selected])
+
+  // Filter sidebar steps based on active user role
+  const filteredSteps = STEPS.filter((step) => {
+    if (!currentUser) return false
+    if (currentUser.role === 'admin') return true
+
+    const STEP_ROLES: Record<number, string[]> = {
+      1: ['requester'],
+      2: ['manager'],
+      3: ['procurement'],
+      4: ['procurement'],
+      5: ['warehouse'],
+      6: ['vendor'],
+      7: ['procurement', 'finance'],
+      8: ['procurement', 'warehouse', 'vendor'],
+      9: ['finance'],
+      10: ['finance'],
+    }
+
+    const allowedRoles = STEP_ROLES[step.id]
+    return allowedRoles ? allowedRoles.includes(currentUser.role) : false
+  })
+
+  // Check if user is authorized to see Vendors section
+  const canSeeVendors = currentUser && (currentUser.role === 'procurement' || currentUser.role === 'admin')
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
@@ -144,25 +201,29 @@ function Layout() {
               Dashboard
             </button>
             
-            <div className="pt-4 pb-1">
-              <p className="px-3 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Procurement Cycle</p>
-            </div>
-            
-            {STEPS.map((step) => {
-              const isSelected = step.id === selected
-              const Icon = step.icon
-              return (
-                <button key={step.id} onClick={() => setSelected(step.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all duration-200 group ${
-                    isSelected ? 'bg-blue-600 text-white shadow-md font-semibold' : 'text-slate-300 font-medium hover:bg-slate-800 hover:text-white'
-                  }`}>
-                  <div className="flex items-center gap-3 text-[13px]">
-                    <Icon className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`} />
-                    <span className="truncate max-w-[120px]">{step.title}</span>
-                  </div>
-                </button>
-              )
-            })}
+            {filteredSteps.length > 0 && (
+              <>
+                <div className="pt-4 pb-1">
+                  <p className="px-3 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Procurement Cycle</p>
+                </div>
+                
+                {filteredSteps.map((step) => {
+                  const isSelected = step.id === selected
+                  const Icon = step.icon
+                  return (
+                    <button key={step.id} onClick={() => setSelected(step.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all duration-200 group ${
+                        isSelected ? 'bg-blue-600 text-white shadow-md font-semibold' : 'text-slate-300 font-medium hover:bg-slate-800 hover:text-white'
+                      }`}>
+                      <div className="flex items-center gap-3 text-[13px]">
+                        <Icon className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`} />
+                        <span className="truncate max-w-[120px]">{step.title}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </>
+            )}
 
             <div className="pt-4 pb-1">
               <p className="px-3 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Management</p>
@@ -178,15 +239,17 @@ function Layout() {
               Reports
             </button>
             
-            <button 
-              onClick={() => setSelected('vendors')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 font-medium text-[13px] ${
-                selected === 'vendors' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Users className={`w-4 h-4 ${selected === 'vendors' ? 'text-white' : 'text-slate-400'}`} />
-              Vendors
-            </button>
+            {canSeeVendors && (
+              <button 
+                onClick={() => setSelected('vendors')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 font-medium text-[13px] ${
+                  selected === 'vendors' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Users className={`w-4 h-4 ${selected === 'vendors' ? 'text-white' : 'text-slate-400'}`} />
+                Vendors
+              </button>
+            )}
 
             <button 
               onClick={() => setSelected('settings')}
