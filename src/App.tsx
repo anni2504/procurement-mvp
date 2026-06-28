@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ProcurementProvider, useProcurement, TOTAL_STEPS, getStepStatuses } from './context/ProcurementContext'
 import { ToastProvider } from './context/ToastContext'
 import Dashboard from './components/Dashboard'
@@ -35,7 +35,7 @@ const STEPS = [
 ]
 
 function StepContent({ stepId }: { stepId: number }) {
-  const { state, createNewWorkflow } = useProcurement()
+  const { state, createNewWorkflow, currentUser } = useProcurement()
   const step = STEPS.find(s => s.id === stepId)!
   const Component = step.comp
 
@@ -50,6 +50,23 @@ function StepContent({ stepId }: { stepId: number }) {
       console.error(err)
     }
   }
+
+  // Enforce roles per step
+  const STEP_ROLES: Record<number, { roles: string[]; name: string }> = {
+    1: { roles: ['requester'], name: 'Requester (Alice)' },
+    2: { roles: ['manager'], name: 'Manager (Bob)' },
+    3: { roles: ['procurement'], name: 'Procurement (Charlie)' },
+    4: { roles: ['procurement'], name: 'Procurement (Charlie)' },
+    5: { roles: ['warehouse'], name: 'Warehouse (Dave)' },
+    6: { roles: ['vendor'], name: 'Vendor (Victor)' },
+    7: { roles: ['procurement', 'finance'], name: 'Procurement (Charlie) or Finance (Frank)' },
+    8: { roles: ['procurement', 'warehouse', 'vendor'], name: 'Procurement (Charlie), Warehouse (Dave), or Vendor (Victor)' },
+    9: { roles: ['finance'], name: 'Finance (Frank)' },
+    10: { roles: ['finance'], name: 'Finance (Frank)' },
+  }
+
+  const stepConfig = STEP_ROLES[stepId]
+  const isAuthorized = currentUser && (currentUser.role === 'admin' || stepConfig.roles.includes(currentUser.role))
 
   return (
     <div className="animate-slide-in-right" key={stepId}>
@@ -78,7 +95,23 @@ function StepContent({ stepId }: { stepId: number }) {
             {stepStatus === 'pending' && <Badge variant="secondary" className="rounded-full px-3">○ Pending</Badge>}
           </div>
 
-          <div className="animate-fade-in">{Component && <Component />}</div>
+          {!isAuthorized && stepStatus === 'in_progress' && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 mb-6 flex items-start gap-3 text-sm animate-fade-in">
+              <span className="text-lg leading-none">⚠️</span>
+              <div>
+                <p className="font-bold text-amber-900">Role Restriction Active</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  You are logged in as <strong className="capitalize">{currentUser?.name} ({currentUser?.role})</strong>. 
+                  Only <strong className="underline">{stepConfig.name}</strong> or an <strong>Admin</strong> can execute this step. 
+                  Use the <strong>Actor Switcher</strong> in the header to switch roles and complete this step.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className={`animate-fade-in transition-all ${!isAuthorized && stepStatus === 'in_progress' ? 'opacity-60 pointer-events-none select-none' : ''}`}>
+            {Component && <Component />}
+          </div>
         </>
       )}
     </div>
@@ -262,6 +295,52 @@ function Layout() {
 
 function Header({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
   const [showNotifications, setShowNotifications] = useState(false)
+  const { currentUser, logout, login } = useProcurement()
+
+  const ROLE_EMAILS: Record<string, string> = {
+    requester: 'alice@company.com',
+    manager: 'bob@company.com',
+    procurement: 'charlie@company.com',
+    warehouse: 'dave@company.com',
+    vendor: 'victor@company.com',
+    finance: 'frank@company.com',
+    admin: 'admin@company.com',
+  }
+
+  const handleRoleChange = async (newRole: string) => {
+    const email = ROLE_EMAILS[newRole]
+    if (email) {
+      try {
+        await login(email, 'password123')
+      } catch (err) {
+        console.error('Role switch failed:', err)
+      }
+    }
+  }
+
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'requester': return 'bg-violet-50 text-violet-800 border-violet-200'
+      case 'manager': return 'bg-sky-50 text-sky-800 border-sky-200'
+      case 'procurement': return 'bg-amber-50 text-amber-800 border-amber-200'
+      case 'warehouse': return 'bg-emerald-50 text-emerald-800 border-emerald-200'
+      case 'vendor': return 'bg-indigo-50 text-indigo-800 border-indigo-200'
+      case 'finance': return 'bg-rose-50 text-rose-800 border-rose-200'
+      default: return 'bg-slate-50 text-slate-800 border-slate-200'
+    }
+  }
+
+  const getAvatarColor = (role: string) => {
+    switch (role) {
+      case 'requester': return 'bg-violet-600'
+      case 'manager': return 'bg-sky-600'
+      case 'procurement': return 'bg-amber-600'
+      case 'warehouse': return 'bg-emerald-600'
+      case 'vendor': return 'bg-indigo-600'
+      case 'finance': return 'bg-rose-600'
+      default: return 'bg-slate-700'
+    }
+  }
 
   return (
     <header className={`px-6 py-3 flex items-center justify-between z-30 transition-all duration-300 ease-in-out ${
@@ -340,32 +419,211 @@ function Header({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onTogg
             </div>
           </div>
         )}
+
+        {/* Switch Actor Selector */}
+        <div className="flex items-center gap-2">
+          <label className={`text-xs font-bold uppercase tracking-wider ${
+            sidebarOpen ? 'text-slate-500' : 'text-slate-400'
+          }`}>Actor:</label>
+          <select
+            value={currentUser?.role || ''}
+            onChange={(e) => handleRoleChange(e.target.value)}
+            className={`text-xs font-semibold py-1.5 px-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all border ${
+              sidebarOpen 
+                ? 'bg-slate-50 border-slate-200 text-slate-700' 
+                : 'bg-slate-800 border-slate-700 text-white'
+            }`}
+          >
+            <option value="requester">Alice (Requester)</option>
+            <option value="manager">Bob (Manager)</option>
+            <option value="procurement">Charlie (Procurement)</option>
+            <option value="warehouse">Dave (Warehouse)</option>
+            <option value="vendor">Victor (Vendor)</option>
+            <option value="finance">Frank (Finance)</option>
+            <option value="admin">System Admin</option>
+          </select>
+        </div>
         
         <div className={`flex items-center gap-3 pl-5 transition-colors duration-300 ${
           sidebarOpen ? 'border-l border-slate-200' : 'border-l border-slate-700'
         }`}>
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-            A
+          <div className={`w-8 h-8 rounded-full ${getAvatarColor(currentUser?.role || 'admin')} flex items-center justify-center text-white font-bold text-xs shadow-sm`}>
+            {currentUser?.name?.charAt(0) || 'U'}
           </div>
           <div className="hidden sm:block">
             <p className={`text-[13px] font-bold leading-tight transition-colors duration-300 ${
               sidebarOpen ? 'text-slate-900' : 'text-white'
-            }`}>Admin User</p>
-            <p className={`text-[11px] font-medium transition-colors duration-300 ${
-              sidebarOpen ? 'text-slate-500' : 'text-slate-400'
-            }`}>Finance</p>
+            }`}>{currentUser?.name || 'User'}</p>
+            <p className={`text-[10px] font-bold px-1.5 py-0.5 rounded border inline-block mt-0.5 uppercase tracking-wider transition-colors duration-300 ${getRoleBadgeColor(currentUser?.role || '')}`}>
+              {currentUser?.role || 'None'}
+            </p>
           </div>
+          
+          <button
+            onClick={logout}
+            title="Log Out"
+            className={`p-1.5 rounded-lg border transition-all ${
+              sidebarOpen 
+                ? 'border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 hover:border-rose-200' 
+                : 'border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
         </div>
       </div>
     </header>
   )
 }
 
+function LoginScreen() {
+  const { login } = useProcurement()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await login(email, password)
+    } catch (err) {
+      setError((err as Error).message || 'Invalid credentials')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleQuickLogin = async (demoEmail: string) => {
+    setError(null)
+    setLoading(true)
+    try {
+      await login(demoEmail, 'password123')
+    } catch (err) {
+      setError((err as Error).message || 'Quick login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const demoAccounts = [
+    { name: 'Alice', role: 'requester', desc: 'Raise Requests (Step 1)', email: 'alice@company.com', color: 'bg-violet-50 text-violet-700 border-violet-100 hover:bg-violet-100' },
+    { name: 'Bob', role: 'manager', desc: 'Approve Requests (Step 2)', email: 'bob@company.com', color: 'bg-sky-50 text-sky-700 border-sky-100 hover:bg-sky-100' },
+    { name: 'Charlie', role: 'procurement', desc: 'RFP & Purchase Orders (Steps 3-4)', email: 'charlie@company.com', color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100' },
+    { name: 'Dave', role: 'warehouse', desc: 'Goods Receipts (Step 5)', email: 'dave@company.com', color: 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100' },
+    { name: 'Victor', role: 'vendor', desc: 'Submit Invoices (Step 6)', email: 'victor@company.com', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100' },
+    { name: 'Frank', role: 'finance', desc: 'Pay & Settle (Steps 9-10)', email: 'frank@company.com', color: 'bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100' },
+    { name: 'Admin', role: 'admin', desc: 'Full System Access', email: 'admin@company.com', color: 'bg-slate-50 text-slate-700 border-slate-100 hover:bg-slate-100' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-[#0F172A] text-slate-100 flex flex-col items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl overflow-hidden flex flex-col md:flex-row">
+        
+        {/* Left Side: Form */}
+        <div className="flex-1 p-8 flex flex-col justify-center border-b md:border-b-0 md:border-r border-slate-800">
+          <div className="mb-6">
+            <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              <span>🛡️</span> Procurement MVP
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">Sign in to manage the accounts payable pipeline.</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold">
+                ⚠️ {error}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Email Address</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="w-full px-3.5 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm text-white placeholder:text-slate-600"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Password</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-3.5 py-2 rounded-lg bg-slate-950 border border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm text-white placeholder:text-slate-600"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-bold text-sm transition-colors mt-2"
+            >
+              {loading ? 'Authenticating...' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+
+        {/* Right Side: Demo Accounts */}
+        <div className="flex-1 p-8 bg-slate-950/40">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-white">Interactive Demo Accounts</h3>
+            <p className="text-slate-400 text-xs mt-0.5">Click any actor card to log in instantly and test their workflow permissions.</p>
+          </div>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+            {demoAccounts.map(acc => (
+              <button
+                key={acc.email}
+                onClick={() => handleQuickLogin(acc.email)}
+                disabled={loading}
+                className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all group ${acc.color}`}
+              >
+                <div>
+                  <p className="font-bold text-xs uppercase tracking-wider">{acc.name} ({acc.role})</p>
+                  <p className="text-[11px] opacity-80 mt-0.5">{acc.desc}</p>
+                </div>
+                <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">Quick Login →</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+function AppContent() {
+  const { currentUser, authLoading } = useProcurement()
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-slate-500">Loading Procurement System...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return <LoginScreen />
+  }
+
+  return <Layout />
+}
+
 export default function App() {
   return (
     <ProcurementProvider>
       <ToastProvider>
-        <Layout />
+        <AppContent />
       </ToastProvider>
     </ProcurementProvider>
   )

@@ -2,11 +2,12 @@ import { Router } from 'express'
 import Workflow from '../models/Workflow.js'
 import VendorQuote from '../models/VendorQuote.js'
 import { STEP_NAMES, TOTAL_STEPS } from '../types.js'
+import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js'
 
 const router = Router()
 
 // List all workflows (with optional status filter)
-router.get('/', async (req, res) => {
+router.get('/', authenticate as any, async (req, res) => {
   try {
     const { status } = req.query
     const filter: Record<string, any> = {}
@@ -33,7 +34,7 @@ router.get('/', async (req, res) => {
 })
 
 // Get workflows by current step number (key endpoint for multi-request view)
-router.get('/by-step/:stepNum', async (req, res) => {
+router.get('/by-step/:stepNum', authenticate as any, async (req, res) => {
   const stepNumber = parseInt(req.params.stepNum)
   if (isNaN(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) {
     return res.status(400).json({ error: 'Invalid step number' })
@@ -89,7 +90,7 @@ router.get('/by-step/:stepNum', async (req, res) => {
 })
 
 // Create new workflow
-router.post('/', async (_req, res) => {
+router.post('/', authenticate as any, requireRole(['requester', 'procurement']) as any, async (_req, res) => {
   try {
     const steps = []
     for (let i = 1; i <= TOTAL_STEPS; i++) {
@@ -109,7 +110,7 @@ router.post('/', async (_req, res) => {
 })
 
 // Get single workflow with all steps and quotes
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate as any, async (req, res) => {
   try {
     const workflow = await Workflow.findById(req.params.id).lean()
     if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
@@ -126,10 +127,48 @@ router.get('/:id', async (req, res) => {
 })
 
 // Update step data & status
-router.put('/:id/steps/:stepNum', async (req, res) => {
+router.put('/:id/steps/:stepNum', authenticate as any, async (req: AuthRequest, res) => {
   const { id, stepNum } = req.params
   const { status, data } = req.body
   const stepNumber = parseInt(stepNum)
+
+  // Role check based on step number
+  const userRole = req.user?.role
+  if (userRole !== 'admin') {
+    if (stepNumber === 1 && userRole !== 'requester') {
+      return res.status(403).json({ error: 'Forbidden: Only a Requester can create or edit step 1 requests' })
+    }
+    if (stepNumber === 2 && userRole !== 'manager') {
+      return res.status(403).json({ error: 'Forbidden: Only a Manager can approve step 2 requests' })
+    }
+    if ((stepNumber === 3 || stepNumber === 4) && userRole !== 'procurement') {
+      return res.status(403).json({ error: 'Forbidden: Only a Procurement user can manage quotes and issue POs' })
+    }
+    if (stepNumber === 5 && userRole !== 'warehouse') {
+      return res.status(403).json({ error: 'Forbidden: Only a Warehouse user can issue Goods Receipts' })
+    }
+    if (stepNumber === 6 && userRole !== 'vendor') {
+      return res.status(403).json({ error: 'Forbidden: Only a Vendor can submit invoices' })
+    }
+    if (stepNumber === 7 && userRole !== 'procurement' && userRole !== 'finance') {
+      return res.status(403).json({ error: 'Forbidden: Only Procurement or Finance can trigger 3-Way Matching' })
+    }
+    if (stepNumber === 8) {
+      const correctiveAction = data?.correctiveAction
+      if (correctiveAction === 'po_amendment' && userRole !== 'procurement') {
+        return res.status(403).json({ error: 'Forbidden: Only Procurement can raise PO amendments' })
+      }
+      if (correctiveAction === 'grn_correction' && userRole !== 'warehouse') {
+        return res.status(403).json({ error: 'Forbidden: Only Warehouse can correct GRNs' })
+      }
+      if (correctiveAction === 'invoice_correction' && userRole !== 'vendor') {
+        return res.status(403).json({ error: 'Forbidden: Only the Vendor can correct invoices' })
+      }
+    }
+    if ((stepNumber === 9 || stepNumber === 10) && userRole !== 'finance') {
+      return res.status(403).json({ error: 'Forbidden: Only Finance can approve or process payments' })
+    }
+  }
 
   try {
     const workflow = await Workflow.findById(id)
@@ -184,7 +223,7 @@ router.put('/:id/steps/:stepNum', async (req, res) => {
 })
 
 // Cancel a workflow
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticate as any, requireRole(['admin']) as any, async (req, res) => {
   try {
     const workflow = await Workflow.findById(req.params.id)
     if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
@@ -197,7 +236,7 @@ router.delete('/:id', async (req, res) => {
 })
 
 // Submit vendor quote for workflow
-router.post('/:id/quotes', async (req, res) => {
+router.post('/:id/quotes', authenticate as any, requireRole(['vendor']) as any, async (req, res) => {
   const { vendor_id, quote_amount } = req.body
   try {
     const quote = await VendorQuote.create({
@@ -212,7 +251,7 @@ router.post('/:id/quotes', async (req, res) => {
 })
 
 // Get quotes for workflow
-router.get('/:id/quotes', async (req, res) => {
+router.get('/:id/quotes', authenticate as any, async (req, res) => {
   try {
     const quotes = await VendorQuote.find({ workflowId: req.params.id })
       .populate('vendorId', 'name email')
@@ -225,7 +264,7 @@ router.get('/:id/quotes', async (req, res) => {
 })
 
 // Select vendor quote
-router.put('/:id/quotes/:quoteId/select', async (req, res) => {
+router.put('/:id/quotes/:quoteId/select', authenticate as any, requireRole(['procurement']) as any, async (req, res) => {
   const { id, quoteId } = req.params
   try {
     await VendorQuote.updateMany({ workflowId: id }, { isSelected: false })

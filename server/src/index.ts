@@ -5,6 +5,7 @@ import { connectDB, getDBStatus } from './db.js'
 import { seedDatabase } from './seed.js'
 import workflowRoutes from './routes/workflows.js'
 import vendorRoutes from './routes/vendors.js'
+import authRoutes from './routes/auth.js'
 
 dotenv.config()
 
@@ -15,6 +16,7 @@ app.use(cors())
 app.use(express.json())
 
 // Routes
+app.use('/api/auth', authRoutes)
 app.use('/api/workflows', workflowRoutes)
 app.use('/api/vendors', vendorRoutes)
 

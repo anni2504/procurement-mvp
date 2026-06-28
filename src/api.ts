@@ -1,4 +1,48 @@
-// ─── Centralized API Client (MOCKED FOR CLIENT-SIDE ONLY) ───
+// ─── Centralized API Client (Connected to Express Backend) ───
+
+// ─── Helper for LocalStorage Token ───
+const TOKEN_KEY = 'procurement_auth_token'
+
+export function setToken(token: string | null) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+// ─── Base HTTP Request Helper ───
+const BASE = '/api'
+
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const res = await fetch(`${BASE}${url}`, {
+    ...options,
+    headers: {
+      ...headers,
+      ...options?.headers,
+    },
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Request failed' }))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+
+  return res.json()
+}
 
 // ─── Types ───
 export interface WorkflowStep {
@@ -64,70 +108,57 @@ export interface VendorListResponse {
   }
 }
 
-// ─── In-Memory Store ───
+// ─── Auth APIs ───
 
-let mockWorkflows: WorkflowDetail[] = []
-let mockVendors: VendorRecord[] = [
-  { _id: 'v1', name: 'TechServe Solutions', email: 'sales@techserve.com', phone: '123-456-7890', category: 'IT Equipment', rating: 4.8, priceTier: 'premium', location: 'New York', isActive: true },
-  { _id: 'v2', name: 'Office Needs Ltd.', email: 'hello@officeneeds.com', phone: '123-456-7891', category: 'Office Supplies', rating: 4.2, priceTier: 'budget', location: 'London', isActive: true },
-  { _id: 'v3', name: 'CloudSoft Services', email: 'cloud@cloudsoft.com', phone: '123-456-7892', category: 'Software', rating: 4.9, priceTier: 'premium', location: 'San Francisco', isActive: true },
-]
-let mockQuotes: QuoteDetail[] = []
+export interface User {
+  id: string
+  name: string
+  email: string
+  role: 'admin' | 'requester' | 'manager' | 'procurement' | 'warehouse' | 'vendor' | 'finance'
+}
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms))
+export interface LoginResponse {
+  token: string
+  user: User
+}
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const data = await request<LoginResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+  setToken(data.token)
+  return data
+}
+
+export async function fetchCurrentUser(): Promise<User> {
+  const data = await request<{ user: User }>('/auth/me')
+  return data.user
+}
+
+export function logout() {
+  setToken(null)
+}
 
 // ─── Workflow APIs ───
 
 export async function fetchWorkflows(status?: string): Promise<WorkflowSummary[]> {
-  await delay(300)
-  if (status) return mockWorkflows.filter(w => w.status === status)
-  return mockWorkflows
+  const url = status ? `/workflows?status=${status}` : '/workflows'
+  return request<WorkflowSummary[]>(url)
 }
 
 export async function fetchWorkflowsByStep(stepNum: number): Promise<WorkflowSummary[]> {
-  await delay(300)
-  return mockWorkflows.filter(w => w.currentStep === stepNum)
+  return request<WorkflowSummary[]>(`/workflows/by-step/${stepNum}`)
 }
 
-const STEP_NAMES = [
-  'Purchase Requisition', 'Requisition Approval', 'Vendor Quotations & Selection', 
-  'Purchase Order Generation', 'Goods Receipt Note (GRN)', 'Invoice Submission',
-  '3-Way Matching', 'Dispute Resolution', 'Finance Authorization', 'Payment Processing'
-]
-
 export async function createWorkflow(): Promise<WorkflowDetail> {
-  await delay(500)
-  const steps: WorkflowStep[] = Array.from({ length: 10 }, (_, i) => ({
-    stepNumber: i + 1,
-    stepName: STEP_NAMES[i],
-    status: i === 0 ? 'in_progress' : 'pending',
-    data: {},
-    startedAt: i === 0 ? new Date().toISOString() : null,
-    completedAt: null,
-  }))
-
-  const newWf: WorkflowDetail = {
-    _id: `wf-${Date.now()}`,
-    status: 'active',
-    steps,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    completedAt: null,
-    completedSteps: 0,
-    currentStep: 1,
-    requestData: {},
-    quotes: []
-  }
-  
-  mockWorkflows.push(newWf)
-  return newWf
+  return request<WorkflowDetail>('/workflows', {
+    method: 'POST',
+  })
 }
 
 export async function fetchWorkflow(id: string): Promise<WorkflowDetail> {
-  await delay(200)
-  const wf = mockWorkflows.find(w => w._id === id)
-  if (!wf) throw new Error('Workflow not found')
-  return wf
+  return request<WorkflowDetail>(`/workflows/${id}`)
 }
 
 export async function updateStep(
@@ -135,35 +166,16 @@ export async function updateStep(
   stepNum: number,
   payload: { status?: string; data?: Record<string, any> }
 ): Promise<WorkflowDetail> {
-  await delay(300)
-  const wf = mockWorkflows.find(w => w._id === workflowId)
-  if (!wf) throw new Error('Workflow not found')
-
-  const step = wf.steps.find(s => s.stepNumber === stepNum)
-  if (!step) throw new Error('Step not found')
-
-  if (payload.status) step.status = payload.status as any
-  if (payload.status === 'completed' && !step.completedAt) step.completedAt = new Date().toISOString()
-  if (payload.data) step.data = { ...step.data, ...payload.data }
-
-  // Auto-progress to next step if completed
-  if (payload.status === 'completed' && stepNum < 10) {
-    const nextStep = wf.steps.find(s => s.stepNumber === stepNum + 1)
-    if (nextStep && nextStep.status === 'pending') {
-      nextStep.status = 'in_progress'
-      nextStep.startedAt = new Date().toISOString()
-      wf.currentStep = stepNum + 1
-    }
-  }
-
-  wf.updatedAt = new Date().toISOString()
-  return { ...wf }
+  return request<WorkflowDetail>(`/workflows/${workflowId}/steps/${stepNum}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function cancelWorkflow(id: string): Promise<void> {
-  await delay(200)
-  const wf = mockWorkflows.find(w => w._id === id)
-  if (wf) wf.status = 'cancelled'
+  await request<any>(`/workflows/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 // ─── Vendor APIs ───
@@ -176,68 +188,39 @@ export async function fetchVendors(filters?: {
   page?: number
   limit?: number
 }): Promise<VendorListResponse> {
-  await delay(300)
-  let filtered = [...mockVendors]
-
-  if (filters?.search) {
-    const s = filters.search.toLowerCase()
-    filtered = filtered.filter(v => v.name.toLowerCase().includes(s) || v.category.toLowerCase().includes(s))
+  const qs = new URLSearchParams()
+  if (filters) {
+    if (filters.category) qs.set('category', filters.category)
+    if (filters.price_tier) qs.set('price_tier', filters.price_tier)
+    if (filters.min_rating) qs.set('min_rating', String(filters.min_rating))
+    if (filters.search) qs.set('search', filters.search)
+    if (filters.page) qs.set('page', String(filters.page))
+    if (filters.limit) qs.set('limit', String(filters.limit))
   }
-  if (filters?.category) filtered = filtered.filter(v => v.category === filters.category)
-  if (filters?.price_tier) filtered = filtered.filter(v => v.priceTier === filters.price_tier)
-  if (filters?.min_rating) filtered = filtered.filter(v => v.rating >= filters.min_rating)
-
-  return {
-    vendors: filtered,
-    pagination: {
-      page: 1,
-      limit: 10,
-      total: filtered.length,
-      totalPages: 1
-    }
-  }
+  const query = qs.toString()
+  return request<VendorListResponse>(`/vendors${query ? `?${query}` : ''}`)
 }
 
 // ─── Quote APIs ───
 
 export async function submitQuote(workflowId: string, vendorId: string, quoteAmount: number): Promise<any> {
-  await delay(300)
-  const vendor = mockVendors.find(v => v._id === vendorId)
-  if (!vendor) throw new Error('Vendor not found')
-
-  const quote: QuoteDetail = {
-    _id: `q-${Date.now()}`,
-    workflowId,
-    vendorId: vendor,
-    quoteAmount,
-    isSelected: false,
-    submittedAt: new Date().toISOString()
-  }
-  mockQuotes.push(quote)
-  
-  const wf = mockWorkflows.find(w => w._id === workflowId)
-  if (wf) wf.quotes.push(quote)
-  
-  return quote
+  return request<any>(`/workflows/${workflowId}/quotes`, {
+    method: 'POST',
+    body: JSON.stringify({ vendor_id: vendorId, quote_amount: quoteAmount }),
+  })
 }
 
 export async function selectQuote(workflowId: string, quoteId: string): Promise<void> {
-  await delay(200)
-  const wf = mockWorkflows.find(w => w._id === workflowId)
-  if (wf) {
-    wf.quotes.forEach(q => {
-      q.isSelected = q._id === quoteId
-    })
-  }
+  await request<any>(`/workflows/${workflowId}/quotes/${quoteId}/select`, {
+    method: 'PUT',
+  })
 }
 
 export async function fetchQuotes(workflowId: string): Promise<QuoteDetail[]> {
-  await delay(200)
-  return mockQuotes.filter(q => q.workflowId === workflowId)
+  return request<QuoteDetail[]>(`/workflows/${workflowId}/quotes`)
 }
 
-// ─── Health ───
-
+// ─── Health check ───
 export async function checkHealth(): Promise<{ status: string; db: string }> {
-  return { status: 'mocked', db: 'in-memory' }
+  return request<{ status: string; db: string }>('/health')
 }

@@ -1,10 +1,11 @@
 import { Router } from 'express'
 import Vendor from '../models/Vendor.js'
+import { authenticate, requireRole } from '../middleware/auth.js'
 
 const router = Router()
 
 // List vendors with filtering and pagination
-router.get('/', async (req, res) => {
+router.get('/', authenticate as any, async (req, res) => {
   const { category, price_tier, min_rating, search, page = '1', limit = '20' } = req.query
   const pageNum = Math.max(1, parseInt(page as string))
   const limitNum = Math.min(50, Math.max(1, parseInt(limit as string)))
@@ -43,7 +44,7 @@ router.get('/', async (req, res) => {
 })
 
 // Get vendor categories
-router.get('/categories', async (_req, res) => {
+router.get('/categories', authenticate as any, async (_req, res) => {
   try {
     const result = await Vendor.aggregate([
       { $match: { isActive: true } },
@@ -58,7 +59,7 @@ router.get('/categories', async (_req, res) => {
 })
 
 // Add new vendor
-router.post('/', async (req, res) => {
+router.post('/', authenticate as any, requireRole(['procurement']) as any, async (req, res) => {
   const { name, email, phone, category, rating, price_tier, location } = req.body
   try {
     const vendor = await Vendor.create({
@@ -76,7 +77,7 @@ router.post('/', async (req, res) => {
 })
 
 // Get single vendor
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate as any, async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.params.id).lean()
     if (!vendor) return res.status(404).json({ error: 'Vendor not found' })

@@ -37,6 +37,30 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  html.dark {
+    --background: 222 47% 11%;
+    --foreground: 0 0% 98%;
+  }
+
+  /* Quick Dark Mode Mapping for hardcoded tailwind classes */
+  .dark body { background-color: #020617; color: #f8fafc; }
+  .dark .bg-white { background-color: #0f172a !important; }
+  .dark .text-slate-900 { color: #f8fafc !important; }
+  .dark .text-slate-800 { color: #f1f5f9 !important; }
+  .dark .text-slate-700 { color: #e2e8f0 !important; }
+  .dark .text-slate-600 { color: #cbd5e1 !important; }
+  .dark .text-slate-500 { color: #94a3b8 !important; }
+  .dark .bg-slate-50 { background-color: #1e293b !important; }
+  .dark .bg-slate-100 { background-color: #334155 !important; }
+  .dark .border-slate-100 { border-color: #1e293b !important; }
+  .dark .border-slate-200 { border-color: #334155 !important; }
+  .dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1e293b !important; }
+  .dark .bg-blue-50 { background-color: rgba(37, 99, 235, 0.15) !important; }
+  .dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15) !important; }
+  .dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.15) !important; }
+  .dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.15) !important; }
+  .dark .bg-purple-50 { background-color: rgba(168, 85, 247, 0.15) !important; }
+  
   html {
     scroll-behavior: smooth;
   }

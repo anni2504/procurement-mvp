@@ -2,6 +2,8 @@ import mongoose from 'mongoose'
 import Workflow from './models/Workflow.js'
 import Vendor from './models/Vendor.js'
 import VendorQuote from './models/VendorQuote.js'
+import User from './models/User.js'
+import { hashPassword } from './lib/crypto.js'
 import { STEP_NAMES, TOTAL_STEPS } from './types.js'
 
 const sampleVendors = [
@@ -176,6 +178,21 @@ function generateStepsData(targetStep: number, itemIndex: number, requestNum: nu
 
 export async function seedDatabase() {
   try {
+    const userCount = await User.countDocuments()
+    if (userCount === 0) {
+      console.log('🌱 Seeding Users...')
+      const users = [
+        { name: 'Alice Requester', email: 'alice@company.com', passwordHash: hashPassword('password123'), role: 'requester' },
+        { name: 'Bob Manager', email: 'bob@company.com', passwordHash: hashPassword('password123'), role: 'manager' },
+        { name: 'Charlie Procurement', email: 'charlie@company.com', passwordHash: hashPassword('password123'), role: 'procurement' },
+        { name: 'Dave Warehouse', email: 'dave@company.com', passwordHash: hashPassword('password123'), role: 'warehouse' },
+        { name: 'Victor Vendor', email: 'victor@company.com', passwordHash: hashPassword('password123'), role: 'vendor' },
+        { name: 'Frank Finance', email: 'frank@company.com', passwordHash: hashPassword('password123'), role: 'finance' },
+        { name: 'System Admin', email: 'admin@company.com', passwordHash: hashPassword('password123'), role: 'admin' },
+      ]
+      await User.insertMany(users)
+    }
+
     const vendorCount = await Vendor.countDocuments()
     if (vendorCount === 0) {
       console.log('🌱 Seeding Vendors...')

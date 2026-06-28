@@ -165,10 +165,14 @@ export function getCurrentStep(workflow: WorkflowDetail | null): number {
   return firstPending?.stepNumber || TOTAL_STEPS
 }
 
-// ─── Context ───
-
 interface ProcurementContextType {
   state: AppState
+
+  // Auth state & actions
+  currentUser: api.User | null
+  authLoading: boolean
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
 
   // Workflow management
   loadWorkflows: () => Promise<void>
@@ -204,6 +208,8 @@ interface ProcurementContextType {
 const ProcurementContext = createContext<ProcurementContextType | null>(null)
 
 export function ProcurementProvider({ children }: { children: ReactNode }) {
+  const [currentUser, setCurrentUser] = useState<api.User | null>(null)
+  const [authLoading, setAuthLoading] = useState<boolean>(true)
   const [state, setState] = useState<AppState>({
     workflows: [],
     activeWorkflowId: null,
@@ -212,6 +218,59 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
     loading: false,
     error: null,
   })
+
+  // ─── Auth Actions ───
+
+  const logout = useCallback(() => {
+    api.logout()
+    setCurrentUser(null)
+    setState(s => ({
+      ...s,
+      workflows: [],
+      activeWorkflowId: null,
+      activeWorkflow: null,
+      stepCounts: {},
+    }))
+  }, [])
+
+  const login = useCallback(async (email: string, password: string) => {
+    setState(s => ({ ...s, loading: true }))
+    try {
+      const data = await api.login(email, password)
+      setCurrentUser(data.user)
+      setState(s => ({ ...s, error: null }))
+      
+      // Load initial workflows
+      const workflows = await api.fetchWorkflows('active')
+      setState(s => ({ ...s, workflows }))
+    } catch (err) {
+      setState(s => ({ ...s, error: (err as Error).message }))
+      throw err
+    } finally {
+      setState(s => ({ ...s, loading: false }))
+    }
+  }, [])
+
+  // Auto load auth
+  useEffect(() => {
+    async function checkAuth() {
+      const token = api.getToken()
+      if (token) {
+        try {
+          const user = await api.fetchCurrentUser()
+          setCurrentUser(user)
+          
+          // Load workflows
+          const workflows = await api.fetchWorkflows('active')
+          setState(s => ({ ...s, workflows }))
+        } catch (err) {
+          api.logout()
+        }
+      }
+      setAuthLoading(false)
+    }
+    checkAuth()
+  }, [])
 
   // ─── Workflow Management ───
 
@@ -565,12 +624,18 @@ export function ProcurementProvider({ children }: { children: ReactNode }) {
   // ─── Initial Load ───
 
   useEffect(() => {
-    loadStepCounts()
-  }, [loadStepCounts])
+    if (currentUser) {
+      loadStepCounts()
+    }
+  }, [loadStepCounts, currentUser])
 
   return (
     <ProcurementContext.Provider value={{
       state,
+      currentUser,
+      authLoading,
+      login,
+      logout,
       loadWorkflows,
       loadWorkflow,
       createNewWorkflow,
