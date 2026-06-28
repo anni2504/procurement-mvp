@@ -1,6 +1,5 @@
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
-import { MongoMemoryServer } from 'mongodb-memory-server'
 
 dotenv.config()
 
@@ -37,7 +36,8 @@ export async function connectDB() {
       console.error('❌ Local MongoDB also failed:', (fallbackErr as Error).message)
       console.log('🔄 Starting In-Memory MongoDB as final fallback...')
       try {
-        const mongod = await MongoMemoryServer.create()
+        const { MongoMemoryServer: MMS } = await import('mongodb-memory-server')
+        const mongod = await MMS.create()
         const uri = mongod.getUri()
         await mongoose.connect(uri)
         isConnected = true
