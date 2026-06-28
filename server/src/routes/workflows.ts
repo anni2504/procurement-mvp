@@ -3,11 +3,29 @@ import Workflow from '../models/Workflow.js'
 import VendorQuote from '../models/VendorQuote.js'
 import { STEP_NAMES, TOTAL_STEPS } from '../types.js'
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth.js'
+import { getDBStatus } from '../db.js'
+import {
+  getMockWorkflows,
+  getMockWorkflowsByStep,
+  createMockWorkflow,
+  getMockWorkflow,
+  updateMockWorkflowStep,
+  cancelMockWorkflow,
+  submitMockQuote,
+  getMockQuotes,
+  selectMockQuote
+} from '../lib/mockStore.js'
 
 const router = Router()
 
 // List all workflows (with optional status filter)
 router.get('/', authenticate as any, async (req, res) => {
+  if (!getDBStatus()) {
+    const statusVal = req.query.status as string
+    const result = getMockWorkflows(statusVal)
+    return res.json(result)
+  }
+
   try {
     const { status } = req.query
     const filter: Record<string, any> = {}
@@ -38,6 +56,11 @@ router.get('/by-step/:stepNum', authenticate as any, async (req, res) => {
   const stepNumber = parseInt(req.params.stepNum)
   if (isNaN(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) {
     return res.status(400).json({ error: 'Invalid step number' })
+  }
+
+  if (!getDBStatus()) {
+    const result = getMockWorkflowsByStep(stepNumber)
+    return res.json(result)
   }
 
   try {
@@ -91,6 +114,11 @@ router.get('/by-step/:stepNum', authenticate as any, async (req, res) => {
 
 // Create new workflow
 router.post('/', authenticate as any, requireRole(['requester', 'procurement']) as any, async (_req, res) => {
+  if (!getDBStatus()) {
+    const workflow = createMockWorkflow()
+    return res.json(workflow)
+  }
+
   try {
     const steps = []
     for (let i = 1; i <= TOTAL_STEPS; i++) {
@@ -111,6 +139,12 @@ router.post('/', authenticate as any, requireRole(['requester', 'procurement']) 
 
 // Get single workflow with all steps and quotes
 router.get('/:id', authenticate as any, async (req, res) => {
+  if (!getDBStatus()) {
+    const workflow = getMockWorkflow(req.params.id)
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
+    return res.json(workflow)
+  }
+
   try {
     const workflow = await Workflow.findById(req.params.id).lean()
     if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
@@ -170,6 +204,12 @@ router.put('/:id/steps/:stepNum', authenticate as any, async (req: AuthRequest, 
     }
   }
 
+  if (!getDBStatus()) {
+    const updated = updateMockWorkflowStep(id, stepNumber, status, data)
+    if (!updated) return res.status(404).json({ error: 'Workflow or step not found' })
+    return res.json(updated)
+  }
+
   try {
     const workflow = await Workflow.findById(id)
     if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
@@ -224,6 +264,11 @@ router.put('/:id/steps/:stepNum', authenticate as any, async (req: AuthRequest, 
 
 // Cancel a workflow
 router.delete('/:id', authenticate as any, requireRole(['admin']) as any, async (req, res) => {
+  if (!getDBStatus()) {
+    cancelMockWorkflow(req.params.id)
+    return res.json({ success: true })
+  }
+
   try {
     const workflow = await Workflow.findById(req.params.id)
     if (!workflow) return res.status(404).json({ error: 'Workflow not found' })
@@ -238,6 +283,12 @@ router.delete('/:id', authenticate as any, requireRole(['admin']) as any, async 
 // Submit vendor quote for workflow
 router.post('/:id/quotes', authenticate as any, requireRole(['vendor']) as any, async (req, res) => {
   const { vendor_id, quote_amount } = req.body
+
+  if (!getDBStatus()) {
+    const quote = submitMockQuote(req.params.id, vendor_id, quote_amount)
+    return res.json(quote)
+  }
+
   try {
     const quote = await VendorQuote.create({
       workflowId: req.params.id,
@@ -252,6 +303,11 @@ router.post('/:id/quotes', authenticate as any, requireRole(['vendor']) as any, 
 
 // Get quotes for workflow
 router.get('/:id/quotes', authenticate as any, async (req, res) => {
+  if (!getDBStatus()) {
+    const quotes = getMockQuotes(req.params.id)
+    return res.json(quotes)
+  }
+
   try {
     const quotes = await VendorQuote.find({ workflowId: req.params.id })
       .populate('vendorId', 'name email')
@@ -266,6 +322,12 @@ router.get('/:id/quotes', authenticate as any, async (req, res) => {
 // Select vendor quote
 router.put('/:id/quotes/:quoteId/select', authenticate as any, requireRole(['procurement']) as any, async (req, res) => {
   const { id, quoteId } = req.params
+
+  if (!getDBStatus()) {
+    selectMockQuote(id, quoteId)
+    return res.json({ success: true })
+  }
+
   try {
     await VendorQuote.updateMany({ workflowId: id }, { isSelected: false })
     await VendorQuote.findByIdAndUpdate(quoteId, { isSelected: true })

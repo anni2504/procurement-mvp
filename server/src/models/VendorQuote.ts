@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose'
 
-export interface IVendorQuote extends Document {
+export interface IVendorQuote {
   workflowId: mongoose.Types.ObjectId
   vendorId: mongoose.Types.ObjectId
   quoteAmount: number

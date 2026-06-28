@@ -1,6 +1,13 @@
 import { Router } from 'express'
 import Vendor from '../models/Vendor.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
+import { getDBStatus } from '../db.js'
+import {
+  getMockVendorsList,
+  getMockVendorCategories,
+  addMockVendor,
+  getMockVendor
+} from '../lib/mockStore.js'
 
 const router = Router()
 
@@ -10,6 +17,11 @@ router.get('/', authenticate as any, async (req, res) => {
   const pageNum = Math.max(1, parseInt(page as string))
   const limitNum = Math.min(50, Math.max(1, parseInt(limit as string)))
   const skip = (pageNum - 1) * limitNum
+
+  if (!getDBStatus()) {
+    const result = getMockVendorsList({ category, price_tier, min_rating, search })
+    return res.json(result)
+  }
 
   try {
     const filter: Record<string, any> = { isActive: true }
@@ -45,6 +57,11 @@ router.get('/', authenticate as any, async (req, res) => {
 
 // Get vendor categories
 router.get('/categories', authenticate as any, async (_req, res) => {
+  if (!getDBStatus()) {
+    const result = getMockVendorCategories()
+    return res.json(result)
+  }
+
   try {
     const result = await Vendor.aggregate([
       { $match: { isActive: true } },
@@ -61,6 +78,12 @@ router.get('/categories', authenticate as any, async (_req, res) => {
 // Add new vendor
 router.post('/', authenticate as any, requireRole(['procurement']) as any, async (req, res) => {
   const { name, email, phone, category, rating, price_tier, location } = req.body
+
+  if (!getDBStatus()) {
+    const vendor = addMockVendor(req.body)
+    return res.json(vendor)
+  }
+
   try {
     const vendor = await Vendor.create({
       name, email,
@@ -78,6 +101,12 @@ router.post('/', authenticate as any, requireRole(['procurement']) as any, async
 
 // Get single vendor
 router.get('/:id', authenticate as any, async (req, res) => {
+  if (!getDBStatus()) {
+    const vendor = getMockVendor(req.params.id)
+    if (!vendor) return res.status(404).json({ error: 'Vendor not found' })
+    return res.json(vendor)
+  }
+
   try {
     const vendor = await Vendor.findById(req.params.id).lean()
     if (!vendor) return res.status(404).json({ error: 'Vendor not found' })
