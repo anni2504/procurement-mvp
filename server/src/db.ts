@@ -36,7 +36,7 @@ export async function connectDB() {
       console.error('❌ Local MongoDB also failed:', (fallbackErr as Error).message)
       console.log('🔄 Starting In-Memory MongoDB as final fallback...')
       try {
-        const { MongoMemoryServer: MMS } = await import('mongodb-memory-server')
+        const { MongoMemoryServer: MMS } = await import('mongodb-memory-server' as any)
         const mongod = await MMS.create()
         const uri = mongod.getUri()
         await mongoose.connect(uri)
